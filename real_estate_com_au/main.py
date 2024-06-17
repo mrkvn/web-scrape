@@ -1,13 +1,17 @@
 import asyncio
+import datetime
 import json
 from pathlib import Path
 from urllib.parse import urlparse
 
+import gspread
 import httpx
 from aiolimiter import AsyncLimiter
+from oauth2client.service_account import ServiceAccountCredentials
 from selectolax.parser import HTMLParser
 
 # parameters
+EMAIL = "INSERT_YOUR_EMAIL_HERE"
 PAGE_START = 1
 PAGE_END = 2
 
@@ -17,6 +21,7 @@ URL = "https://www.realestate.com.au/buy/property-house-with-3-bedrooms-in-range
 # get this manually from the browser. go to the website, right click, inspect, network, click on the first request
 # go to headers, on the request portion, copy the cookie
 COOKIE = "INSERT_COOKIE_HERE"
+
 USER_AGENT = "INSERT_USER_AGENT_HERE"
 
 
@@ -27,13 +32,16 @@ async def fetch(client, url, limiter, queue):
     }
 
     async with limiter:
-        res = await client.get(url, headers=headers)
-
-        if len(res.text) < 2000:
-            print("Error: Page not loaded properly")
-            return None
-
-        await queue.put(res.text)
+        try:
+            res = await client.get(url, headers=headers, timeout=30.0)  # Set timeout to 30 seconds
+            if len(res.text) < 2000:
+                print("Error: Page not loaded properly")
+                return None
+            await queue.put(res.text)
+        except httpx.ReadTimeout:
+            print(f"ReadTimeout: Failed to fetch {url}")
+        except Exception as e:
+            print(f"Exception: {e}")
 
 
 def get_base_url(url):
@@ -100,6 +108,49 @@ async def process_queue(queue):
         queue.task_done()
 
 
+def get_google_sheet_client():
+
+    # Define the scope
+    scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+
+    # Load the credentials
+    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+
+    # Authorize the clientsheet
+    return gspread.authorize(creds)
+
+
+def save_to_google_sheet():
+    # Get the current date and time
+    now = datetime.datetime.now()
+
+    # Format the date and time as yyyy-mm-dd_hourmin
+    timestamp = now.strftime("%Y-%m-%d_%H%M")
+
+    # Open the Google Sheet
+    filename = f"realestate_com_au_{timestamp}"
+    gsc = get_google_sheet_client()
+    sheet = gsc.create(filename).sheet1
+
+    # Share the Google Sheet with your email
+    gsc.insert_permission(sheet.spreadsheet.id, EMAIL, perm_type="user", role="writer")
+
+    # Read data from the JSON file
+    with open("output.json", "r") as f:
+        data = json.load(f)
+
+    # Extract headers dynamically from the JSON data
+    if data:
+        headers = list(data[0].keys())
+        # Add headers to the sheet
+        sheet.append_row(headers)
+
+        # Append each row of data to the sheet
+        for entry in data:
+            row = [entry.get(header, None) for header in headers]
+            sheet.append_row(row)
+
+
 async def main():
     rate_limit = AsyncLimiter(1, 3)  # requests per second
     queue = asyncio.Queue()
@@ -113,6 +164,12 @@ async def main():
         await queue.put(None)
         await consumer_task
 
+    save_to_google_sheet()
 
+
+# Instead of asyncio.run(), use this in Colab:
+# await main()
+
+# use this in non-Colab
 if __name__ == "__main__":
     asyncio.run(main())

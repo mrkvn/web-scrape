@@ -1,2 +1,8 @@
 venv/
+__pycache__/
+
+credentials.json
+
+.DS_Store
+
 *output*
