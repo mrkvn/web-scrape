@@ -1,6 +1,6 @@
 import asyncio
-import datetime
 import json
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -21,7 +21,6 @@ URL = "https://www.realestate.com.au/buy/property-house-with-3-bedrooms-in-range
 # get this manually from the browser. go to the website, right click, inspect, network, click on the first request
 # go to headers, on the request portion, copy the cookie
 COOKIE = "INSERT_COOKIE_HERE"
-
 USER_AGENT = "INSERT_USER_AGENT_HERE"
 
 
@@ -77,12 +76,23 @@ def process_html(html):
             link_tag = li.css_first("h2").css_first("a") if li.css_first("h2") else None
             link = link_tag.attributes["href"] if link_tag else None
 
+            added = li.css_first("div.residential-card__banner-strip")
+            added_text = added.text() if added else None
+
+            # Get the current date and time
+            now = datetime.now()
+
+            # Format the date and time
+            formatted_now = now.strftime("%Y-%m-%d %H:%M:%S")
+
             data.append(
                 {
                     "agent": agent_text,
                     "address": address_text,
                     "price": price_text,
                     "link": get_base_url(URL) + link if link else None,
+                    "added": added_text,
+                    "created_at": formatted_now,
                 }
             )
 
@@ -122,7 +132,7 @@ def get_google_sheet_client():
 
 def save_to_google_sheet():
     # Get the current date and time
-    now = datetime.datetime.now()
+    now = datetime.now()
 
     # Format the date and time as yyyy-mm-dd_hourmin
     timestamp = now.strftime("%Y-%m-%d_%H%M")
