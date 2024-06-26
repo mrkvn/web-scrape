@@ -11,7 +11,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from selectolax.parser import HTMLParser
 
 # parameters
-EMAIL = "INSERT_YOUR_EMAIL_HERE"
+EMAIL = "INSERT_EMAIL_HERE"
 PAGE_START = 1
 PAGE_END = 2
 
@@ -166,13 +166,12 @@ async def main():
     queue = asyncio.Queue()
     async with httpx.AsyncClient() as client:
         tasks = [fetch(client, get_current_url(page), rate_limit, queue) for page in range(PAGE_START, PAGE_END + 1)]
-        consumer_task = asyncio.create_task(process_queue(queue))
+        asyncio.create_task(process_queue(queue))
 
         await asyncio.gather(*tasks)
 
         # Signal the consumer to stop
         await queue.put(None)
-        await consumer_task
 
     save_to_google_sheet()
 
